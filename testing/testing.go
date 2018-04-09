@@ -35,15 +35,34 @@ func generateKeys() (crypto.PrivKey, crypto.PubKey, sdk.Address) {
 	return priv, pub, addr
 }
 
-func setupMultiStore() (sdk.MultiStore, *sdk.KVStoreKey, *sdk.KVStoreKey) {
+// generate a priv key and return it with its address
+func GenerateBaseAccounts(int32 numAccount) ([]sdk.Account, []crypto.PrivKey) {
+	accounts := []BaseAccount
+	privatekeys := []crypto.PrivKey
+
+	for i := 0; i < numAccount; i++ {
+		priv, pub, addr := generateKeys()
+		baseAcc := BaseAcccount{
+			Address: addr,
+			PubKey: pub,
+		}
+		accounts = append(accounts, baseAcc)
+		privatekeys = append(privatekeys, priv)
+	}
+	return accounts, privatekeys
+}
+
+func setupMultiStore(capkeys ...string) (sdk.MultiStore, []*sdk.KVStoreKey) {
 	db := dbm.NewMemDB()
-	authKey := sdk.NewKVStoreKey("authkey")
-	capKey := sdk.NewKVStoreKey("capkey")
 	ms := store.NewCommitMultiStore(db)
-	ms.MountStoreWithDB(capKey, sdk.StoreTypeIAVL, db)
-	ms.MountStoreWithDB(authKey, sdk.StoreTypeIAVL, db)
+	KVStoreKeys := []*sdk.KVStoreKey
+	for _, capkey := range capkeys {
+        kvstorekey := sdk.NewKVStoreKey(capkey)
+        KVStoreKeys = append(KVStoreKeys, kvstorekey)
+		ms.MountStoreWithDB(kvstorekey, sdk.StoreTypeIAVL, db)
+    }
 	ms.LoadLatestVersion()
-	return ms, authKey, capKey
+	return ms, KVStoreKeys
 }
 
 func setGenesisAccounts(bapp *BasecoinApp, accs ...auth.BaseAccount) error {
