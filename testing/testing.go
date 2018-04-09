@@ -18,8 +18,6 @@ type TestApp struct {
 	// keys to access the substores
 	capKeyMainStore    *sdk.KVStoreKey
 	capKeyAccountStore *sdk.KVStoreKey
-	capKeyIBCStore     *sdk.KVStoreKey
-	capKeyStakingStore *sdk.KVStoreKey
 
 	// Manage getting and setting accounts
 	accountMapper sdk.AccountMapper
