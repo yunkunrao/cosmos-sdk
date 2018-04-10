@@ -1,7 +1,6 @@
 package rpc
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -10,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/cosmos/cosmos-sdk/client"
+	"github.com/cosmos/cosmos-sdk/client/context"
 )
 
 func validatorCommand() *cobra.Command {
@@ -24,9 +24,9 @@ func validatorCommand() *cobra.Command {
 	return cmd
 }
 
-func getValidators(height *int64) ([]byte, error) {
+func GetValidators(height *int64) ([]byte, error) {
 	// get the node
-	node, err := client.GetNode()
+	node, err := context.NewCoreContextFromViper().GetNode()
 	if err != nil {
 		return nil, err
 	}
@@ -36,7 +36,7 @@ func getValidators(height *int64) ([]byte, error) {
 		return nil, err
 	}
 
-	output, err := json.MarshalIndent(res, "", "  ")
+	output, err := cdc.MarshalJSON(res)
 	if err != nil {
 		return nil, err
 	}
@@ -59,7 +59,7 @@ func printValidators(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	output, err := getValidators(height)
+	output, err := GetValidators(height)
 	if err != nil {
 		return err
 	}
@@ -84,7 +84,7 @@ func ValidatorsetRequestHandler(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("ERROR: Requested block height is bigger then the chain length."))
 		return
 	}
-	output, err := getValidators(&height)
+	output, err := GetValidators(&height)
 	if err != nil {
 		w.WriteHeader(500)
 		w.Write([]byte(err.Error()))
@@ -100,7 +100,7 @@ func LatestValidatorsetRequestHandler(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(err.Error()))
 		return
 	}
-	output, err := getValidators(&height)
+	output, err := GetValidators(&height)
 	if err != nil {
 		w.WriteHeader(500)
 		w.Write([]byte(err.Error()))

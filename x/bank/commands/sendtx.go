@@ -7,12 +7,10 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
-	"github.com/cosmos/cosmos-sdk/client"
-	"github.com/cosmos/cosmos-sdk/client/builder"
+	"github.com/cosmos/cosmos-sdk/client/context"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/wire"
 	"github.com/cosmos/cosmos-sdk/x/bank"
-	cryptokeys "github.com/tendermint/go-crypto/keys"
 )
 
 const (
@@ -38,8 +36,10 @@ type Commander struct {
 }
 
 func (c Commander) sendTxCmd(cmd *cobra.Command, args []string) error {
+	ctx := context.NewCoreContextFromViper()
+
 	// get the from address
-	from, err := builder.GetFromAddress()
+	from, err := ctx.GetFromAddress()
 	if err != nil {
 		return err
 	}
@@ -59,22 +59,11 @@ func (c Commander) sendTxCmd(cmd *cobra.Command, args []string) error {
 	}
 	to := sdk.Address(bz)
 
-	// get account name
-	name := viper.GetString(client.FlagName)
-
-	// get password
-	buf := client.BufferStdin()
-	prompt := fmt.Sprintf("Password to sign with '%s':", name)
-	passphrase, err := client.GetPassword(prompt, buf)
-	if err != nil {
-		return err
-	}
-
 	// build message
 	msg := BuildMsg(from, to, coins)
 
 	// build and sign the transaction, then broadcast to Tendermint
-	res, err := builder.SignBuildBroadcast(name, passphrase, msg, c.Cdc)
+	res, err := ctx.SignBuildBroadcast(ctx.FromAddressName, msg, c.Cdc)
 	if err != nil {
 		return err
 	}
@@ -88,30 +77,4 @@ func BuildMsg(from sdk.Address, to sdk.Address, coins sdk.Coins) sdk.Msg {
 	output := bank.NewOutput(to, coins)
 	msg := bank.NewSendMsg([]bank.Input{input}, []bank.Output{output})
 	return msg
-}
-
-func (c Commander) SignMessage(msg sdk.Msg, kb cryptokeys.Keybase, accountName string, password string) ([]byte, error) {
-	// sign and build
-	bz := msg.GetSignBytes()
-	sig, pubkey, err := kb.Sign(accountName, password, bz)
-	if err != nil {
-		return nil, err
-	}
-	sigs := []sdk.StdSignature{{
-		PubKey:    pubkey,
-		Signature: sig,
-		Sequence:  viper.GetInt64(client.FlagName),
-	}}
-
-	// TODO: fees
-	var fee sdk.StdFee
-
-	// marshal bytes
-	tx := sdk.NewStdTx(msg, fee, sigs)
-
-	txBytes, err := c.Cdc.MarshalBinary(tx)
-	if err != nil {
-		return nil, err
-	}
-	return txBytes, nil
 }
