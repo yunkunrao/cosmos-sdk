@@ -1,7 +1,7 @@
 package commands
 
 import (
-	"encoding/hex"
+	"encoding/base64"
 	"fmt"
 
 	"github.com/spf13/cobra"
@@ -71,7 +71,7 @@ func (co commander) bondTxCmd(cmd *cobra.Command, args []string) error {
 	}
 
 	// TODO: bech32 ...
-	rawPubKey, err := hex.DecodeString(valString)
+	rawPubKey, err := base64.StdEncoding.DecodeString(valString)
 	if err != nil {
 		return err
 	}
