@@ -123,8 +123,52 @@ devdoc_clean:
 devdoc_update:
 	docker pull tendermint/devdoc
 
+########################################
+### Docker image
+
+build-docker:
+	cp build/gaiad DOCKER/gaiad
+	docker build --label=gaiad --tag="tendermint/gaiad" DOCKER
+	rm -rf DOCKER/gaiad
+
+###########################################################
+### Local testnet using docker
+
+# Build linux binary on other platforms
+build-linux:
+	GOOS=linux GOARCH=amd64 $(MAKE) build
+
+# Run a 4-node testnet locally
+localnet-start:
+	@if ! [ -f build/node0/config/genesis.json ]; then docker run --rm -v $(CURDIR)/build:/gaiad:Z tendermint/tendermint testnet --v 4 --o . --populate-persistent-peers --starting-ip-address 192.167.10.2 ; fi
+	docker-compose up
+
+# Stop testnet
+localnet-stop:
+	docker-compose down
+
+###########################################################
+### Remote full-nodes (sentry) using terraform and ansible
+
+# Server management
+sentry-start:
+	@if [ -z "$(DO_API_TOKEN)" ]; then echo "DO_API_TOKEN environment variable not set." ; false ; fi
+	@if ! [ -f $(HOME)/.ssh/id_rsa.pub ]; then ssh-keygen ; fi
+	cd networks/remote/terraform && terraform init && terraform apply -var DO_API_TOKEN="$(DO_API_TOKEN)" -var SSH_KEY_FILE="$(HOME)/.ssh/id_rsa.pub"
+	@if ! [ -f $(CURDIR)/build/node0/config/genesis.json ]; then docker run --rm -v $(CURDIR)/build:/gaiad:Z tendermint/tendermint testnet --v 0 --n 4 --o . ; fi
+	cd networks/remote/ansible && ANSIBLE_HOST_KEY_CHECKING=False ansible-playbook -i inventory/digital_ocean.py -l sentrynet install.yml
+	@echo "Next step: Add your validator setup in the genesis.json and config.tml files and run \"make sentry-config\". (Public key of validator, chain ID, peer IP and node ID.)"
+
+# Configuration management
+sentry-config:
+	cd networks/remote/ansible && ansible-playbook -i inventory/digital_ocean.py -l sentrynet config.yml -e BINARY=$(CURDIR)/build/gaiad -e CONFIGDIR=$(CURDIR)/build
+
+sentry-stop:
+	@if [ -z "$(DO_API_TOKEN)" ]; then echo "DO_API_TOKEN environment variable not set." ; false ; fi
+	cd networks/remote/terraform && terraform destroy -var DO_API_TOKEN="$(DO_API_TOKEN)" -var SSH_KEY_FILE="$(HOME)/.ssh/id_rsa.pub"
 
 # To avoid unintended conflicts with file names, always add to .PHONY
 # unless there is a reason not to.
 # https://www.gnu.org/software/make/manual/html_node/Phony-Targets.html
-.PHONY: build build_examples install install_examples dist check_tools get_tools get_vendor_deps draw_deps test test_unit test_tutorial benchmark devdoc_init devdoc devdoc_save devdoc_update
+.PHONY: build build_examples install install_examples dist check_tools get_tools get_vendor_deps draw_deps test test_unit test_tutorial benchmark devdoc_init devdoc devdoc_save devdoc_update build-docker build-linux localnet-start localnet-stop sentry-start sentry-config sentry-stop
+
