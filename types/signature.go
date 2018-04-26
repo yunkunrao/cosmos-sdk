@@ -6,5 +6,6 @@ import crypto "github.com/tendermint/go-crypto"
 type StdSignature struct {
 	crypto.PubKey    `json:"pub_key"` // optional
 	crypto.Signature `json:"signature"`
-	Sequence         int64 `json:"sequence"`
+	AccountNumber    int64 `json:"acc_sequence"`
+	Sequence         int64 `json:"tx_sequence"`
 }

@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"encoding/binary"
 	"fmt"
 	"reflect"
 
@@ -8,7 +9,10 @@ import (
 	wire "github.com/cosmos/cosmos-sdk/wire"
 )
 
+var globalAccountNumberKey = []byte("globalAccountNumber")
+
 var _ sdk.AccountMapper = (*accountMapper)(nil)
+var _ sdk.AccountMapper = (*sealedAccountMapper)(nil)
 
 // Implements sdk.AccountMapper.
 // This AccountMapper encodes/decodes accounts using the
@@ -36,10 +40,30 @@ func NewAccountMapper(cdc *wire.Codec, key sdk.StoreKey, proto sdk.Account) acco
 	}
 }
 
+// Returns the go-amino codec.  You may need to register interfaces
+// and concrete types here, if your app's sdk.Account
+// implementation includes interface fields.
+// NOTE: It is not secure to expose the codec, so check out
+// .Seal().
+func (am accountMapper) WireCodec() *wire.Codec {
+	return am.cdc
+}
+
+// Returns a "sealed" accountMapper.
+// The codec is not accessible from a sealedAccountMapper.
+func (am accountMapper) Seal() sealedAccountMapper {
+	return sealedAccountMapper{am}
+}
+
 // Implements sdk.AccountMapper.
 func (am accountMapper) NewAccountWithAddress(ctx sdk.Context, addr sdk.Address) sdk.Account {
 	acc := am.clonePrototype()
 	acc.SetAddress(addr)
+
+	nextAccountNumber := am.getNextAccountNumber(ctx)
+	acc.SetAccountNumber(nextAccountNumber)
+	acc.SetSequence(0)
+	am.SetNextAccountNumber(ctx, nextAccountNumber+1)
 	return acc
 }
 
@@ -63,20 +87,47 @@ func (am accountMapper) SetAccount(ctx sdk.Context, acc sdk.Account) {
 }
 
 // Implements sdk.AccountMapper.
-func (am accountMapper) IterateAccounts(ctx sdk.Context, process func(sdk.Account) (stop bool)) {
+func (am accountMapper) GetNextAccountNumber(ctx sdk.Context) int64 {
+	accountNumber := int64(0)
 	store := ctx.KVStore(am.key)
-	iter := store.Iterator(nil, nil)
-	for {
-		if !iter.Valid() {
-			return
-		}
-		val := iter.Value()
-		acc := am.decodeAccount(val)
-		if process(acc) {
-			return
-		}
-		iter.Next()
+	bz := store.Get(globalAccountNumberKey)
+	if bz == nil {
+		bz = am.cdc.MustMarshalBinary(accountNumber)
+		store.Set(globalAccountNumberKey, bz)
+		return 0
 	}
+
+	err := am.cdc.UnmarshalBinary(bz, accountNumber)
+	if err != nil {
+		panic(err)
+	}
+
+	accountNumber += 1
+	bz = am.cdc.MustMarshalBinary(accountNumber)
+	store.Set(globalAccountNumberKey, bz)
+
+	return accountNumber
+}
+
+// Implements sdk.AccountMapper.
+func (am accountMapper) setNextAccountNumber(ctx sdk.Context, nonce int64) {
+	bz := make([]byte, 8)
+	binary.LittleEndian.PutUint64(bz, uint64(nonce))
+	store := ctx.KVStore(am.key)
+	store.Set([]byte("GlobalAccNonce"), bz)
+}
+
+//----------------------------------------
+// sealedAccountMapper
+
+type sealedAccountMapper struct {
+	accountMapper
+}
+
+// There's no way for external modules to mutate the
+// sam.accountMapper.cdc from here, even with reflection.
+func (sam sealedAccountMapper) WireCodec() *wire.Codec {
+	panic("accountMapper is sealed")
 }
 
 //----------------------------------------
