@@ -81,6 +81,7 @@ func AddCommands(
 		ExportCmd(ctx, cdc, appExport),
 		UnsafeResetAllCmd(ctx),
 		version.VersionCmd,
+		TestnetFilesCmd(ctx, cdc, appInit),
 	)
 }
 
