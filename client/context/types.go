@@ -2,6 +2,7 @@ package context
 
 import (
 	rpcclient "github.com/tendermint/tendermint/rpc/client"
+	"fmt"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
 )
@@ -40,6 +41,7 @@ func (c CoreContext) WithTrustNode(trustNode bool) CoreContext {
 // WithNodeURI - return a copy of the context with an updated node URI
 func (c CoreContext) WithNodeURI(nodeURI string) CoreContext {
 	c.NodeURI = nodeURI
+	fmt.Println("WITHNODEURI", nodeURI)
 	c.Client = rpcclient.NewHTTP(nodeURI, "/websocket")
 	return c
 }

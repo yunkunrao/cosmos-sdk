@@ -22,6 +22,8 @@ func FreeTCPAddr(t *testing.T) string {
 	require.Nil(t, err)
 
 	port := l.Addr().(*net.TCPAddr).Port
+	fmt.Println("@@@@", port)
+	time.Sleep(time.Second)
 	addr := fmt.Sprintf("tcp://0.0.0.0:%d", port)
 	return addr
 }

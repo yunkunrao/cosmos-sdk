@@ -64,7 +64,18 @@ func TestGaiaCLIDeclareCandidacy(t *testing.T) {
 	flags := fmt.Sprintf("--node=%v --chain-id=%v", servAddr, chainID)
 
 	// start gaiad server
-	cmd, _, _ := tests.GoExecuteT(t, fmt.Sprintf("gaiad start --rpc.laddr=%v", servAddr))
+	cmd, _, out := tests.GoExecuteT(t, fmt.Sprintf("gaiad start --rpc.laddr=%v", servAddr))
+	go func() {
+		for {
+			buf := make([]byte, 1024, 1024)
+			n, err := out.Read(buf)
+			if err != nil {
+				fmt.Println(">> wtf can't even read", err)
+				return
+			}
+			fmt.Println(">> READ yay ", string(buf[:n]))
+		}
+	}()
 	defer cmd.Process.Kill()
 
 	fooAddr, _ := executeGetAddrPK(t, "gaiacli keys show foo --output=json")
@@ -85,7 +96,7 @@ func TestGaiaCLIDeclareCandidacy(t *testing.T) {
 	declStr += fmt.Sprintf(" --pubkey=%v", barPubKey)
 	declStr += fmt.Sprintf(" --amount=%v", "3steak")
 	declStr += fmt.Sprintf(" --moniker=%v", "bar-vally")
-	fmt.Printf("debug declStr: %v\n", declStr)
+	fmt.Printf("debug declStr (%v): %v\n", time.Now(), declStr)
 	executeWrite(t, declStr, pass)
 	time.Sleep(time.Second) // waiting for some blocks to pass
 	barAcc = executeGetAccount(t, fmt.Sprintf("gaiacli account %v %v", barAddr, flags))
@@ -118,8 +129,9 @@ func executeWrite(t *testing.T, cmdStr string, writes ...string) {
 		_, err := wc.Write([]byte(write + "\n"))
 		require.NoError(t, err)
 	}
-	fmt.Printf("debug waiting cmdStr: %v\n", cmdStr)
+	fmt.Printf("debug waiting cmdStr (%v): %v\n", time.Now(), cmdStr)
 	cmd.Wait()
+	fmt.Println(">> cmd.Wait done")
 }
 
 func executeWritePrint(t *testing.T, cmdStr string, writes ...string) {
@@ -129,12 +141,13 @@ func executeWritePrint(t *testing.T, cmdStr string, writes ...string) {
 		_, err := wc.Write([]byte(write + "\n"))
 		require.NoError(t, err)
 	}
-	fmt.Printf("debug waiting cmdStr: %v\n", cmdStr)
+	fmt.Printf("debug waiting cmdStr (%v): %v\n", time.Now(), cmdStr)
 	cmd.Wait()
+	fmt.Println(">> cmd.Wait done (2)")
 
 	bz := make([]byte, 100000)
 	rc.Read(bz)
-	fmt.Printf("debug read: %v\n", string(bz))
+	fmt.Printf("debug read (%v): %v\n", time.Now(), string(bz))
 }
 
 func executeInit(t *testing.T, cmdStr string) (chainID string) {
@@ -158,10 +171,11 @@ func executeGetAddrPK(t *testing.T, cmdStr string) (addr, pubKey string) {
 }
 
 func executeGetAccount(t *testing.T, cmdStr string) auth.BaseAccount {
+	fmt.Println("COMMAND STR IS " , cmdStr)
 	out := tests.ExecuteT(t, cmdStr)
 	var initRes map[string]json.RawMessage
 	err := json.Unmarshal([]byte(out), &initRes)
-	require.NoError(t, err, "out %v, err %v", out, err)
+	require.NoError(t, err, "OUT %v, err %v", out, err)
 	value := initRes["value"]
 	var acc auth.BaseAccount
 	cdc := wire.NewCodec()

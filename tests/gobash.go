@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"fmt"
 
 	"github.com/stretchr/testify/require"
 )
@@ -30,7 +31,7 @@ func ExecuteT(t *testing.T, command string) (out string) {
 	cmd := getCmd(t, command)
 	bz, err := cmd.CombinedOutput()
 	if err != nil {
-		panic(err)
+		panic(fmt.Sprintf("Error: %v\nCombined Output: %s", err, bz))
 	}
 	require.NoError(t, err, string(bz))
 	out = strings.Trim(string(bz), "\n") //trim any new lines
@@ -40,6 +41,7 @@ func ExecuteT(t *testing.T, command string) (out string) {
 
 // Asynchronously execute the command, return standard output and error
 func GoExecuteT(t *testing.T, command string) (cmd *exec.Cmd, pipeIn io.WriteCloser, pipeOut io.ReadCloser) {
+	fmt.Println("@@@@@", command)
 	cmd = getCmd(t, command)
 	pipeIn, err := cmd.StdinPipe()
 	require.NoError(t, err)

@@ -203,6 +203,7 @@ func (rs *rootMultiStore) getStoreByName(name string) Store {
 // Ie. `req.Path` here is `/<substore>/<path>`, and trimmed to `/<path>` for the substore.
 // TODO: add proof for `multistore -> substore`.
 func (rs *rootMultiStore) Query(req abci.RequestQuery) abci.ResponseQuery {
+	fmt.Println("In rootMultiStore Query", req)
 	// Query just routes this to a substore.
 	path := req.Path
 	storeName, subpath, err := parsePath(path)
