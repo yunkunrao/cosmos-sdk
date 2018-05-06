@@ -32,7 +32,7 @@ type Account interface {
 	GetPubKey() crypto.PubKey // can return nil.
 	SetPubKey(crypto.PubKey) error
 
-	GetNextAccountNumber() int64
+	GetAccountNumber() int64
 	SetAccountNumber(int64) error
 
 	GetSequence() int64

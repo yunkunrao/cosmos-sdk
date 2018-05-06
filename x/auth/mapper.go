@@ -1,7 +1,6 @@
 package auth
 
 import (
-	"encoding/binary"
 	"fmt"
 	"reflect"
 
@@ -60,10 +59,9 @@ func (am accountMapper) NewAccountWithAddress(ctx sdk.Context, addr sdk.Address)
 	acc := am.clonePrototype()
 	acc.SetAddress(addr)
 
-	nextAccountNumber := am.getNextAccountNumber(ctx)
+	nextAccountNumber := am.nextAccountNumber(ctx)
 	acc.SetAccountNumber(nextAccountNumber)
 	acc.SetSequence(0)
-	am.SetNextAccountNumber(ctx, nextAccountNumber+1)
 	return acc
 }
 
@@ -87,9 +85,26 @@ func (am accountMapper) SetAccount(ctx sdk.Context, acc sdk.Account) {
 }
 
 // Implements sdk.AccountMapper.
-func (am accountMapper) GetNextAccountNumber(ctx sdk.Context) int64 {
-	accountNumber := int64(0)
+func (am accountMapper) IterateAccounts(ctx sdk.Context, process func(sdk.Account) (stop bool)) {
 	store := ctx.KVStore(am.key)
+	iter := store.Iterator(nil, nil)
+	for {
+		if !iter.Valid() {
+			return
+		}
+		val := iter.Value()
+		acc := am.decodeAccount(val)
+		if process(acc) {
+			return
+		}
+		iter.Next()
+	}
+}
+
+func (am accountMapper) nextAccountNumber(ctx sdk.Context) int64 {
+	var accountNumber int64
+	store := ctx.KVStore(am.key)
+
 	bz := store.Get(globalAccountNumberKey)
 	if bz == nil {
 		bz = am.cdc.MustMarshalBinary(accountNumber)
@@ -102,19 +117,10 @@ func (am accountMapper) GetNextAccountNumber(ctx sdk.Context) int64 {
 		panic(err)
 	}
 
-	accountNumber += 1
-	bz = am.cdc.MustMarshalBinary(accountNumber)
+	bz = am.cdc.MustMarshalBinary(accountNumber + 1)
 	store.Set(globalAccountNumberKey, bz)
 
 	return accountNumber
-}
-
-// Implements sdk.AccountMapper.
-func (am accountMapper) setNextAccountNumber(ctx sdk.Context, nonce int64) {
-	bz := make([]byte, 8)
-	binary.LittleEndian.PutUint64(bz, uint64(nonce))
-	store := ctx.KVStore(am.key)
-	store.Set([]byte("GlobalAccNonce"), bz)
 }
 
 //----------------------------------------
