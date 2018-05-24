@@ -82,6 +82,9 @@ package stake
 
 ////_________________________________________________________________________
 
+// TODO register a "what to do on power change function" with staking - such
+// that fee-handler defines what/where info is stored
+
 //// Used in calculation of fee shares, added to a queue for each block where a power change occures
 //type PowerChange struct {
 //Height      int64     `json:"height"`        // block height at change
