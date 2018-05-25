@@ -21,16 +21,19 @@ func TestInitApp(t *testing.T) {
 	require.NoError(t, err)
 
 	// initialize it future-way
-	opts, err := GenInitOptions(nil, nil, "")
+	appState, err := AppGenState(nil, nil)
 	require.NoError(t, err)
-	req := abci.RequestInitChain{AppStateBytes: opts}
+
+	//TODO test validators in the init chain?
+	req := abci.RequestInitChain{
+		AppStateBytes: appState,
+	}
 	app.InitChain(req)
 	app.Commit()
 
-	// XXX test failing
 	// make sure we can query these values
 	query := abci.RequestQuery{
-		Path: "/main/key",
+		Path: "/store/main/key",
 		Data: []byte("foo"),
 	}
 	qres := app.Query(query)
@@ -66,7 +69,7 @@ func TestDeliverTx(t *testing.T) {
 
 	// make sure we can query these values
 	query := abci.RequestQuery{
-		Path: "/main/key",
+		Path: "/store/main/key",
 		Data: []byte(key),
 	}
 	qres := app.Query(query)

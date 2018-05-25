@@ -9,6 +9,7 @@ import (
 	abci "github.com/tendermint/abci/types"
 	crypto "github.com/tendermint/go-crypto"
 	dbm "github.com/tendermint/tmlibs/db"
+	"github.com/tendermint/tmlibs/log"
 
 	"github.com/cosmos/cosmos-sdk/store"
 	sdk "github.com/cosmos/cosmos-sdk/types"
@@ -50,46 +51,22 @@ var (
 	emptyPubkey crypto.PubKey
 )
 
-// default params for testing
-func defaultParams() Params {
-	return Params{
-		InflationRateChange: sdk.NewRat(13, 100),
-		InflationMax:        sdk.NewRat(20, 100),
-		InflationMin:        sdk.NewRat(7, 100),
-		GoalBonded:          sdk.NewRat(67, 100),
-		MaxValidators:       100,
-		BondDenom:           "fermion",
-	}
+//_______________________________________________________________________________________
+
+// intended to be used with require/assert:  require.True(ValEq(...))
+func ValEq(t *testing.T, exp, got Validator) (*testing.T, bool, string, Validator, Validator) {
+	return t, exp.equal(got), "expected:\t%v\ngot:\t\t%v", exp, got
 }
 
-// initial pool for testing
-func initialPool() Pool {
-	return Pool{
-		TotalSupply:       0,
-		BondedShares:      sdk.ZeroRat,
-		UnbondedShares:    sdk.ZeroRat,
-		BondedPool:        0,
-		UnbondedPool:      0,
-		InflationLastTime: 0,
-		Inflation:         sdk.NewRat(7, 100),
-	}
-}
-
-// XXX reference the common declaration of this function
-func subspace(prefix []byte) (start, end []byte) {
-	end = make([]byte, len(prefix))
-	copy(end, prefix)
-	end[len(end)-1]++
-	return prefix, end
-}
+//_______________________________________________________________________________________
 
 func makeTestCodec() *wire.Codec {
 	var cdc = wire.NewCodec()
 
 	// Register Msgs
 	cdc.RegisterInterface((*sdk.Msg)(nil), nil)
-	cdc.RegisterConcrete(bank.SendMsg{}, "test/stake/Send", nil)
-	cdc.RegisterConcrete(bank.IssueMsg{}, "test/stake/Issue", nil)
+	cdc.RegisterConcrete(bank.MsgSend{}, "test/stake/Send", nil)
+	cdc.RegisterConcrete(bank.MsgIssue{}, "test/stake/Issue", nil)
 	cdc.RegisterConcrete(MsgDeclareCandidacy{}, "test/stake/DeclareCandidacy", nil)
 	cdc.RegisterConcrete(MsgEditCandidacy{}, "test/stake/EditCandidacy", nil)
 	cdc.RegisterConcrete(MsgUnbond{}, "test/stake/Unbond", nil)
@@ -104,37 +81,38 @@ func makeTestCodec() *wire.Codec {
 
 func paramsNoInflation() Params {
 	return Params{
-		InflationRateChange: sdk.ZeroRat,
-		InflationMax:        sdk.ZeroRat,
-		InflationMin:        sdk.ZeroRat,
+		InflationRateChange: sdk.ZeroRat(),
+		InflationMax:        sdk.ZeroRat(),
+		InflationMin:        sdk.ZeroRat(),
 		GoalBonded:          sdk.NewRat(67, 100),
 		MaxValidators:       100,
-		BondDenom:           "fermion",
+		BondDenom:           "steak",
 	}
 }
 
 // hogpodge of all sorts of input required for testing
 func createTestInput(t *testing.T, isCheckTx bool, initCoins int64) (sdk.Context, sdk.AccountMapper, Keeper) {
-	db := dbm.NewMemDB()
 	keyStake := sdk.NewKVStoreKey("stake")
-	keyMain := keyStake //sdk.NewKVStoreKey("main") //TODO fix multistore
+	keyAcc := sdk.NewKVStoreKey("acc")
 
+	db := dbm.NewMemDB()
 	ms := store.NewCommitMultiStore(db)
 	ms.MountStoreWithDB(keyStake, sdk.StoreTypeIAVL, db)
+	ms.MountStoreWithDB(keyAcc, sdk.StoreTypeIAVL, db)
 	err := ms.LoadLatestVersion()
 	require.Nil(t, err)
 
-	ctx := sdk.NewContext(ms, abci.Header{ChainID: "foochainid"}, isCheckTx, nil)
+	ctx := sdk.NewContext(ms, abci.Header{ChainID: "foochainid"}, isCheckTx, nil, log.NewNopLogger())
 	cdc := makeTestCodec()
 	accountMapper := auth.NewAccountMapper(
 		cdc,                 // amino codec
-		keyMain,             // target store
+		keyAcc,              // target store
 		&auth.BaseAccount{}, // prototype
-	).Seal()
-	ck := bank.NewCoinKeeper(accountMapper)
-	keeper := NewKeeper(ctx, cdc, keyStake, ck)
+	)
+	ck := bank.NewKeeper(accountMapper)
+	keeper := NewKeeper(cdc, keyStake, ck, DefaultCodespace)
 	keeper.setPool(ctx, initialPool())
-	keeper.setParams(ctx, defaultParams())
+	keeper.setNewParams(ctx, defaultParams())
 
 	// fill all the addresses with some coins
 	for _, addr := range addrs {

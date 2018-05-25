@@ -16,7 +16,7 @@ master    | [![CircleCI](https://circleci.com/gh/cosmos/cosmos-sdk/tree/master.s
 
 **WARNING**: the libraries are still undergoing breaking changes as we get better ideas and start building out the Apps.
 
-**Note**: Requires [Go 1.9+](https://golang.org/dl/)
+**Note**: Requires [Go 1.10+](https://golang.org/dl/)
 
 
 ## Overview
@@ -71,3 +71,7 @@ The key directories of the SDK are:
 ## Getting Started
 
 See the [documentation](https://cosmos-sdk.readthedocs.io).
+
+## Disambiguation
+
+This Cosmos-SDK project is not related to the [React-Cosmos](https://github.com/react-cosmos/react-cosmos) project (yet). Many thanks to Evan Coury and Ovidiu (@skidding) for this Github organization name. As per our agreement, this disambiguation notice will stay here.

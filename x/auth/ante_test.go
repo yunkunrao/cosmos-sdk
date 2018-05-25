@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 	abci "github.com/tendermint/abci/types"
 	crypto "github.com/tendermint/go-crypto"
+	"github.com/tendermint/tmlibs/log"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	wire "github.com/cosmos/cosmos-sdk/wire"
@@ -40,7 +41,7 @@ func privAndAddr() (crypto.PrivKey, sdk.Address) {
 func checkValidTx(t *testing.T, anteHandler sdk.AnteHandler, ctx sdk.Context, tx sdk.Tx) {
 	_, result, abort := anteHandler(ctx, tx)
 	assert.False(t, abort)
-	assert.Equal(t, sdk.CodeOK, result.Code)
+	assert.Equal(t, sdk.ABCICodeOK, result.Code)
 	assert.True(t, result.IsOK())
 }
 
@@ -48,7 +49,7 @@ func checkValidTx(t *testing.T, anteHandler sdk.AnteHandler, ctx sdk.Context, tx
 func checkInvalidTx(t *testing.T, anteHandler sdk.AnteHandler, ctx sdk.Context, tx sdk.Tx, code sdk.CodeType) {
 	_, result, abort := anteHandler(ctx, tx)
 	assert.True(t, abort)
-	assert.Equal(t, code, result.Code)
+	assert.Equal(t, sdk.ToABCICode(sdk.CodespaceRoot, code), result.Code)
 }
 
 func newTestTx(ctx sdk.Context, msg sdk.Msg, privs []crypto.PrivKey, seqs []int64, fee sdk.StdFee) sdk.Tx {
@@ -72,8 +73,8 @@ func TestAnteHandlerSigErrors(t *testing.T) {
 	cdc := wire.NewCodec()
 	RegisterBaseAccount(cdc)
 	mapper := NewAccountMapper(cdc, capKey, &BaseAccount{})
-	anteHandler := NewAnteHandler(mapper)
-	ctx := sdk.NewContext(ms, abci.Header{ChainID: "mychainid"}, false, nil)
+	anteHandler := NewAnteHandler(mapper, BurnFeeHandler)
+	ctx := sdk.NewContext(ms, abci.Header{ChainID: "mychainid"}, false, nil, log.NewNopLogger())
 
 	// keys and addresses
 	priv1, addr1 := privAndAddr()
@@ -113,8 +114,8 @@ func TestAnteHandlerSequences(t *testing.T) {
 	cdc := wire.NewCodec()
 	RegisterBaseAccount(cdc)
 	mapper := NewAccountMapper(cdc, capKey, &BaseAccount{})
-	anteHandler := NewAnteHandler(mapper)
-	ctx := sdk.NewContext(ms, abci.Header{ChainID: "mychainid"}, false, nil)
+	anteHandler := NewAnteHandler(mapper, BurnFeeHandler)
+	ctx := sdk.NewContext(ms, abci.Header{ChainID: "mychainid"}, false, nil, log.NewNopLogger())
 
 	// keys and addresses
 	priv1, addr1 := privAndAddr()
@@ -179,8 +180,8 @@ func TestAnteHandlerFees(t *testing.T) {
 	cdc := wire.NewCodec()
 	RegisterBaseAccount(cdc)
 	mapper := NewAccountMapper(cdc, capKey, &BaseAccount{})
-	anteHandler := NewAnteHandler(mapper)
-	ctx := sdk.NewContext(ms, abci.Header{ChainID: "mychainid"}, false, nil)
+	anteHandler := NewAnteHandler(mapper, BurnFeeHandler)
+	ctx := sdk.NewContext(ms, abci.Header{ChainID: "mychainid"}, false, nil, log.NewNopLogger())
 
 	// keys and addresses
 	priv1, addr1 := privAndAddr()
@@ -216,8 +217,8 @@ func TestAnteHandlerBadSignBytes(t *testing.T) {
 	cdc := wire.NewCodec()
 	RegisterBaseAccount(cdc)
 	mapper := NewAccountMapper(cdc, capKey, &BaseAccount{})
-	anteHandler := NewAnteHandler(mapper)
-	ctx := sdk.NewContext(ms, abci.Header{ChainID: "mychainid"}, false, nil)
+	anteHandler := NewAnteHandler(mapper, BurnFeeHandler)
+	ctx := sdk.NewContext(ms, abci.Header{ChainID: "mychainid"}, false, nil, log.NewNopLogger())
 
 	// keys and addresses
 	priv1, addr1 := privAndAddr()
@@ -291,8 +292,8 @@ func TestAnteHandlerSetPubKey(t *testing.T) {
 	cdc := wire.NewCodec()
 	RegisterBaseAccount(cdc)
 	mapper := NewAccountMapper(cdc, capKey, &BaseAccount{})
-	anteHandler := NewAnteHandler(mapper)
-	ctx := sdk.NewContext(ms, abci.Header{ChainID: "mychainid"}, false, nil)
+	anteHandler := NewAnteHandler(mapper, BurnFeeHandler)
+	ctx := sdk.NewContext(ms, abci.Header{ChainID: "mychainid"}, false, nil, log.NewNopLogger())
 
 	// keys and addresses
 	priv1, addr1 := privAndAddr()

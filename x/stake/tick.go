@@ -26,9 +26,14 @@ func (k Keeper) Tick(ctx sdk.Context) (change []abci.Validator) {
 	// save the params
 	k.setPool(ctx, p)
 
-	change = k.getAccUpdateValidators(ctx)
+	// reset the intra-transaction counter
+	k.setIntraTxCounter(ctx, 0)
 
-	return
+	// calculate validator set changes
+	change = k.getTendermintUpdates(ctx)
+	k.clearTendermintUpdates(ctx)
+
+	return change
 }
 
 // process provisions for an hour period
@@ -41,9 +46,8 @@ func (k Keeper) processProvisions(ctx sdk.Context) Pool {
 	// more bonded tokens are added proportionally to all validators the only term
 	// which needs to be updated is the `BondedPool`. So for each previsions cycle:
 
-	provisions := pool.Inflation.Mul(sdk.NewRat(pool.TotalSupply)).Quo(hrsPerYrRat).Evaluate()
-	pool.BondedPool += provisions
-	pool.TotalSupply += provisions
+	provisions := pool.Inflation.Mul(sdk.NewRat(pool.TokenSupply())).Quo(hrsPerYrRat).Evaluate()
+	pool.BondedTokens += provisions
 	return pool
 }
 
@@ -59,7 +63,7 @@ func (k Keeper) nextInflation(ctx sdk.Context) (inflation sdk.Rat) {
 	// 7% and 20%.
 
 	// (1 - bondedRatio/GoalBonded) * InflationRateChange
-	inflationRateChangePerYear := sdk.OneRat.Sub(pool.bondedRatio().Quo(params.GoalBonded)).Mul(params.InflationRateChange)
+	inflationRateChangePerYear := sdk.OneRat().Sub(pool.bondedRatio().Quo(params.GoalBonded)).Mul(params.InflationRateChange)
 	inflationRateChange := inflationRateChangePerYear.Quo(hrsPerYrRat)
 
 	// increase the new annual inflation for this next cycle

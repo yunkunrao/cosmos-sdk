@@ -37,10 +37,10 @@ func TestBaseAccountAddressPubKey(t *testing.T) {
 	assert.Nil(t, err)
 	assert.Equal(t, pub1, acc.GetPubKey())
 
-	// can't override pubkey
+	// can override pubkey
 	err = acc.SetPubKey(pub2)
-	assert.NotNil(t, err)
-	assert.Equal(t, pub1, acc.GetPubKey())
+	assert.Nil(t, err)
+	assert.Equal(t, pub2, acc.GetPubKey())
 
 	//------------------------------------
 
@@ -105,13 +105,4 @@ func TestBaseAccountMarshal(t *testing.T) {
 	err = codec.UnmarshalBinary(b[:len(b)/2], &acc2)
 	assert.NotNil(t, err)
 
-}
-
-func TestBaseAccountGetSet(t *testing.T) {
-	_, _, addr := keyPubAddr()
-	acc := NewBaseAccountWithAddress(addr)
-
-	// Get/Set are not yet defined - all values cause a panic.
-	assert.Panics(t, func() { acc.Get("key") })
-	assert.Panics(t, func() { acc.Set("key", "value") })
 }

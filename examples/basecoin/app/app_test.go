@@ -39,15 +39,15 @@ var (
 	manyCoins = sdk.Coins{{"foocoin", 1}, {"barcoin", 1}}
 	fee       = sdk.StdFee{
 		sdk.Coins{{"foocoin", 0}},
-		0,
+		100000,
 	}
 
-	sendMsg1 = bank.SendMsg{
+	sendMsg1 = bank.MsgSend{
 		Inputs:  []bank.Input{bank.NewInput(addr1, coins)},
 		Outputs: []bank.Output{bank.NewOutput(addr2, coins)},
 	}
 
-	sendMsg2 = bank.SendMsg{
+	sendMsg2 = bank.MsgSend{
 		Inputs: []bank.Input{bank.NewInput(addr1, coins)},
 		Outputs: []bank.Output{
 			bank.NewOutput(addr2, halfCoins),
@@ -55,7 +55,7 @@ var (
 		},
 	}
 
-	sendMsg3 = bank.SendMsg{
+	sendMsg3 = bank.MsgSend{
 		Inputs: []bank.Input{
 			bank.NewInput(addr1, coins),
 			bank.NewInput(addr4, coins),
@@ -66,7 +66,7 @@ var (
 		},
 	}
 
-	sendMsg4 = bank.SendMsg{
+	sendMsg4 = bank.MsgSend{
 		Inputs: []bank.Input{
 			bank.NewInput(addr2, coins),
 		},
@@ -75,7 +75,7 @@ var (
 		},
 	}
 
-	sendMsg5 = bank.SendMsg{
+	sendMsg5 = bank.MsgSend{
 		Inputs: []bank.Input{
 			bank.NewInput(addr1, manyCoins),
 		},
@@ -85,20 +85,15 @@ var (
 	}
 )
 
-func loggerAndDBs() (log.Logger, map[string]dbm.DB) {
+func loggerAndDB() (log.Logger, dbm.DB) {
 	logger := log.NewTMLogger(log.NewSyncWriter(os.Stdout)).With("module", "sdk/app")
-	dbs := map[string]dbm.DB{
-		"main":    dbm.NewMemDB(),
-		"acc":     dbm.NewMemDB(),
-		"ibc":     dbm.NewMemDB(),
-		"staking": dbm.NewMemDB(),
-	}
-	return logger, dbs
+	db := dbm.NewMemDB()
+	return logger, db
 }
 
 func newBasecoinApp() *BasecoinApp {
-	logger, dbs := loggerAndDBs()
-	return NewBasecoinApp(logger, dbs)
+	logger, db := loggerAndDB()
+	return NewBasecoinApp(logger, db)
 }
 
 func setGenesisAccounts(bapp *BasecoinApp, accs ...auth.BaseAccount) error {
@@ -142,8 +137,8 @@ func TestMsgs(t *testing.T) {
 }
 
 func TestSortGenesis(t *testing.T) {
-	logger, dbs := loggerAndDBs()
-	bapp := NewBasecoinApp(logger, dbs)
+	logger, db := loggerAndDB()
+	bapp := NewBasecoinApp(logger, db)
 
 	// Note the order: the coins are unsorted!
 	coinDenom1, coinDenom2 := "foocoin", "barcoin"
@@ -171,7 +166,7 @@ func TestSortGenesis(t *testing.T) {
 
 	// Unsorted coins means invalid
 	err := sendMsg5.ValidateBasic()
-	require.Equal(t, sdk.CodeInvalidCoins, err.ABCICode(), err.ABCILog())
+	require.Equal(t, sdk.CodeInvalidCoins, err.Code(), err.ABCILog())
 
 	// Sort coins, should be valid
 	sendMsg5.Inputs[0].Coins.Sort()
@@ -184,8 +179,8 @@ func TestSortGenesis(t *testing.T) {
 }
 
 func TestGenesis(t *testing.T) {
-	logger, dbs := loggerAndDBs()
-	bapp := NewBasecoinApp(logger, dbs)
+	logger, db := loggerAndDB()
+	bapp := NewBasecoinApp(logger, db)
 
 	// Construct some genesis bytes to reflect basecoin/types/AppAccount
 	pk := crypto.GenPrivKeyEd25519().PubKey()
@@ -207,13 +202,68 @@ func TestGenesis(t *testing.T) {
 	assert.Equal(t, acc, res1)
 
 	// reload app and ensure the account is still there
-	bapp = NewBasecoinApp(logger, dbs)
+	bapp = NewBasecoinApp(logger, db)
 	ctx = bapp.BaseApp.NewContext(true, abci.Header{})
 	res1 = bapp.accountMapper.GetAccount(ctx, baseAcc.Address)
 	assert.Equal(t, acc, res1)
 }
 
-func TestSendMsgWithAccounts(t *testing.T) {
+func TestMsgChangePubKey(t *testing.T) {
+
+	bapp := newBasecoinApp()
+
+	// Construct some genesis bytes to reflect basecoin/types/AppAccount
+	// Give 77 foocoin to the first key
+	coins, err := sdk.ParseCoins("77foocoin")
+	require.Nil(t, err)
+	baseAcc := auth.BaseAccount{
+		Address: addr1,
+		Coins:   coins,
+	}
+
+	// Construct genesis state
+	err = setGenesisAccounts(bapp, baseAcc)
+	assert.Nil(t, err)
+	// A checkTx context (true)
+	ctxCheck := bapp.BaseApp.NewContext(true, abci.Header{})
+	res1 := bapp.accountMapper.GetAccount(ctxCheck, addr1)
+	assert.Equal(t, baseAcc, res1.(*types.AppAccount).BaseAccount)
+
+	// Run a CheckDeliver
+	SignCheckDeliver(t, bapp, sendMsg1, []int64{0}, true, priv1)
+
+	// Check balances
+	CheckBalance(t, bapp, addr1, "67foocoin")
+	CheckBalance(t, bapp, addr2, "10foocoin")
+
+	changePubKeyMsg := auth.MsgChangeKey{
+		Address:   addr1,
+		NewPubKey: priv2.PubKey(),
+	}
+
+	ctxDeliver := bapp.BaseApp.NewContext(false, abci.Header{})
+	acc := bapp.accountMapper.GetAccount(ctxDeliver, addr1)
+
+	// send a MsgChangePubKey
+	SignCheckDeliver(t, bapp, changePubKeyMsg, []int64{1}, true, priv1)
+	acc = bapp.accountMapper.GetAccount(ctxDeliver, addr1)
+
+	assert.True(t, priv2.PubKey().Equals(acc.GetPubKey()))
+
+	// signing a SendMsg with the old privKey should be an auth error
+	tx := genTx(sendMsg1, []int64{2}, priv1)
+	res := bapp.Deliver(tx)
+	assert.Equal(t, sdk.ToABCICode(sdk.CodespaceRoot, sdk.CodeUnauthorized), res.Code, res.Log)
+
+	// resigning the tx with the new correct priv key should work
+	SignCheckDeliver(t, bapp, sendMsg1, []int64{2}, true, priv2)
+
+	// Check balances
+	CheckBalance(t, bapp, addr1, "57foocoin")
+	CheckBalance(t, bapp, addr2, "20foocoin")
+}
+
+func TestMsgSendWithAccounts(t *testing.T) {
 	bapp := newBasecoinApp()
 
 	// Construct some genesis bytes to reflect basecoin/types/AppAccount
@@ -248,13 +298,13 @@ func TestSendMsgWithAccounts(t *testing.T) {
 	tx.Signatures[0].Sequence = 1
 	res := bapp.Deliver(tx)
 
-	assert.Equal(t, sdk.CodeUnauthorized, res.Code, res.Log)
+	assert.Equal(t, sdk.ToABCICode(sdk.CodespaceRoot, sdk.CodeUnauthorized), res.Code, res.Log)
 
 	// resigning the tx with the bumped sequence should work
 	SignCheckDeliver(t, bapp, sendMsg1, []int64{1}, true, priv1)
 }
 
-func TestSendMsgMultipleOut(t *testing.T) {
+func TestMsgSendMultipleOut(t *testing.T) {
 	bapp := newBasecoinApp()
 
 	genCoins, err := sdk.ParseCoins("42foocoin")
@@ -316,7 +366,7 @@ func TestSengMsgMultipleInOut(t *testing.T) {
 	CheckBalance(t, bapp, addr3, "10foocoin")
 }
 
-func TestSendMsgDependent(t *testing.T) {
+func TestMsgSendDependent(t *testing.T) {
 	bapp := newBasecoinApp()
 
 	genCoins, err := sdk.ParseCoins("42foocoin")
@@ -344,7 +394,7 @@ func TestSendMsgDependent(t *testing.T) {
 	CheckBalance(t, bapp, addr1, "42foocoin")
 }
 
-func TestQuizMsg(t *testing.T) {
+func TestMsgQuiz(t *testing.T) {
 	bapp := newBasecoinApp()
 
 	// Construct genesis state
@@ -442,18 +492,18 @@ func SignCheckDeliver(t *testing.T, bapp *BasecoinApp, msg sdk.Msg, seq []int64,
 	// Run a Check
 	res := bapp.Check(tx)
 	if expPass {
-		require.Equal(t, sdk.CodeOK, res.Code, res.Log)
+		require.Equal(t, sdk.ABCICodeOK, res.Code, res.Log)
 	} else {
-		require.NotEqual(t, sdk.CodeOK, res.Code, res.Log)
+		require.NotEqual(t, sdk.ABCICodeOK, res.Code, res.Log)
 	}
 
 	// Simulate a Block
 	bapp.BeginBlock(abci.RequestBeginBlock{})
 	res = bapp.Deliver(tx)
 	if expPass {
-		require.Equal(t, sdk.CodeOK, res.Code, res.Log)
+		require.Equal(t, sdk.ABCICodeOK, res.Code, res.Log)
 	} else {
-		require.NotEqual(t, sdk.CodeOK, res.Code, res.Log)
+		require.NotEqual(t, sdk.ABCICodeOK, res.Code, res.Log)
 	}
 	bapp.EndBlock(abci.RequestEndBlock{})
 	//bapp.Commit()
