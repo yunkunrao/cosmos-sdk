@@ -19,6 +19,8 @@ import (
 )
 
 func TestGaiaCLISend(t *testing.T) {
+	fmt.Println("wackydebugoutput TestGaiaCLISend 0")
+	defer tests.RemoveTempFiles(t)
 
 	tests.ExecuteT(t, "gaiad unsafe_reset_all")
 	pass := "1234567890"
@@ -26,10 +28,12 @@ func TestGaiaCLISend(t *testing.T) {
 	executeWrite(t, "gaiacli keys delete bar", pass)
 	chainID := executeInit(t, "gaiad init -o --name=foo")
 	executeWrite(t, "gaiacli keys add bar", pass)
+	fmt.Println("wackydebugoutput TestGaiaCLISend 1")
 
 	// get a free port, also setup some common flags
 	servAddr := server.FreeTCPAddr(t)
 	flags := fmt.Sprintf("--node=%v --chain-id=%v", servAddr, chainID)
+	fmt.Println("wackydebugoutput TestGaiaCLISend 2")
 
 	// start gaiad server
 	cmd, _, _ := tests.GoExecuteT(t, fmt.Sprintf("gaiad start --rpc.laddr=%v", servAddr))
@@ -40,6 +44,7 @@ func TestGaiaCLISend(t *testing.T) {
 
 	fooAcc := executeGetAccount(t, fmt.Sprintf("gaiacli account %v %v", fooAddr, flags))
 	assert.Equal(t, int64(50), fooAcc.GetCoins().AmountOf("steak"))
+	fmt.Println("wackydebugoutput TestGaiaCLISend 3")
 
 	executeWrite(t, fmt.Sprintf("gaiacli send %v --amount=10steak --to=%v --name=foo", flags, barAddr), pass)
 	time.Sleep(time.Second * 3) // waiting for some blocks to pass
@@ -48,6 +53,7 @@ func TestGaiaCLISend(t *testing.T) {
 	assert.Equal(t, int64(10), barAcc.GetCoins().AmountOf("steak"))
 	fooAcc = executeGetAccount(t, fmt.Sprintf("gaiacli account %v %v", fooAddr, flags))
 	assert.Equal(t, int64(40), fooAcc.GetCoins().AmountOf("steak"))
+	fmt.Println("wackydebugoutput TestGaiaCLISend 4")
 
 	// test autosequencing
 	executeWrite(t, fmt.Sprintf("gaiacli send %v --amount=10steak --to=%v --name=foo", flags, barAddr), pass)
@@ -57,9 +63,11 @@ func TestGaiaCLISend(t *testing.T) {
 	assert.Equal(t, int64(20), barAcc.GetCoins().AmountOf("steak"))
 	fooAcc = executeGetAccount(t, fmt.Sprintf("gaiacli account %v %v", fooAddr, flags))
 	assert.Equal(t, int64(30), fooAcc.GetCoins().AmountOf("steak"))
+	fmt.Println("wackydebugoutput TestGaiaCLISend 5")
 }
 
 func TestGaiaCLIDeclareCandidacy(t *testing.T) {
+	defer tests.RemoveTempFiles(t)
 
 	tests.ExecuteT(t, "gaiad unsafe_reset_all")
 	pass := "1234567890"
@@ -90,7 +98,7 @@ func TestGaiaCLIDeclareCandidacy(t *testing.T) {
 	// declare candidacy
 	declStr := fmt.Sprintf("gaiacli declare-candidacy %v", flags)
 	declStr += fmt.Sprintf(" --name=%v", "bar")
-	declStr += fmt.Sprintf(" --address-candidate=%v", barAddr)
+	declStr += fmt.Sprintf(" --address-validator=%v", barAddr)
 	declStr += fmt.Sprintf(" --pubkey=%v", barPubKey)
 	declStr += fmt.Sprintf(" --amount=%v", "3steak")
 	declStr += fmt.Sprintf(" --moniker=%v", "bar-vally")
@@ -99,15 +107,15 @@ func TestGaiaCLIDeclareCandidacy(t *testing.T) {
 	time.Sleep(time.Second) // waiting for some blocks to pass
 	barAcc = executeGetAccount(t, fmt.Sprintf("gaiacli account %v %v", barAddr, flags))
 	assert.Equal(t, int64(7), barAcc.GetCoins().AmountOf("steak"))
-	candidate := executeGetCandidate(t, fmt.Sprintf("gaiacli candidate %v --address-candidate=%v", flags, barAddr))
-	assert.Equal(t, candidate.Address.String(), barAddr)
-	assert.Equal(t, int64(3), candidate.BondedShares.Evaluate())
+	validator := executeGetCandidate(t, fmt.Sprintf("gaiacli validator %v --address-validator=%v", flags, barAddr))
+	assert.Equal(t, validator.Owner.String(), barAddr)
+	assert.Equal(t, int64(3), validator.PoolShares.Bonded().Evaluate())
 
 	// TODO timeout issues if not connected to the internet
 	// unbond a single share
 	//unbondStr := fmt.Sprintf("gaiacli unbond %v", flags)
 	//unbondStr += fmt.Sprintf(" --name=%v", "bar")
-	//unbondStr += fmt.Sprintf(" --address-candidate=%v", barAddr)
+	//unbondStr += fmt.Sprintf(" --address-validator=%v", barAddr)
 	//unbondStr += fmt.Sprintf(" --address-delegator=%v", barAddr)
 	//unbondStr += fmt.Sprintf(" --shares=%v", "1")
 	//unbondStr += fmt.Sprintf(" --sequence=%v", "1")
@@ -116,8 +124,8 @@ func TestGaiaCLIDeclareCandidacy(t *testing.T) {
 	//time.Sleep(time.Second * 3) // waiting for some blocks to pass
 	//barAcc = executeGetAccount(t, fmt.Sprintf("gaiacli account %v %v", barAddr, flags))
 	//assert.Equal(t, int64(99998), barAcc.GetCoins().AmountOf("steak"))
-	//candidate = executeGetCandidate(t, fmt.Sprintf("gaiacli candidate %v --address-candidate=%v", flags, barAddr))
-	//assert.Equal(t, int64(2), candidate.BondedShares.Evaluate())
+	//validator = executeGetCandidate(t, fmt.Sprintf("gaiacli validator %v --address-validator=%v", flags, barAddr))
+	//assert.Equal(t, int64(2), validator.BondedShares.Evaluate())
 }
 
 func executeWrite(t *testing.T, cmdStr string, writes ...string) {
@@ -180,11 +188,11 @@ func executeGetAccount(t *testing.T, cmdStr string) auth.BaseAccount {
 	return acc
 }
 
-func executeGetCandidate(t *testing.T, cmdStr string) stake.Candidate {
+func executeGetCandidate(t *testing.T, cmdStr string) stake.Validator {
 	out := tests.ExecuteT(t, cmdStr)
-	var candidate stake.Candidate
+	var validator stake.Validator
 	cdc := app.MakeCodec()
-	err := cdc.UnmarshalJSON([]byte(out), &candidate)
+	err := cdc.UnmarshalJSON([]byte(out), &validator)
 	require.NoError(t, err, "out %v, err %v", out, err)
-	return candidate
+	return validator
 }
